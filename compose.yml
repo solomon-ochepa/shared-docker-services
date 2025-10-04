@@ -1,0 +1,18 @@
+services:
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: phpmyadmin
+    environment:
+      PMA_HOSTS: '${PMA_HOSTS:-users-mysql,***}'
+      PMA_VERBOSES: '${PMA_HOST_NAMES:-Users,***}'
+      PMA_USERS: root
+      UPLOAD_LIMIT: 256M
+    ports:
+      - '${PMA_PORT:-8080}:80'
+    restart: always
+    networks:
+      - shared_network
+
+networks:
+  shared_network:
+    external: true

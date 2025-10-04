@@ -1,0 +1,12 @@
+.env
+.env.backup
+.env.production
+*.log
+/.idea
+/.vscode
+/.zed
+# Extra
+.DS_Store
+Thumbs.db
+* copy
+*copy.*
