@@ -11,8 +11,8 @@ services:
       - '${PMA_PORT:-8080}:80'
     restart: always
     networks:
-      - shared_network
+      - shared
 
 networks:
-  shared_network:
+  shared:
     external: true
