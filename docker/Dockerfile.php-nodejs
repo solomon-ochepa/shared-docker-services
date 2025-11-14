@@ -9,7 +9,7 @@ FROM php:8.3-apache AS base
 # Define the build arguments with default values
 ARG PHPIZE_DEPS="libpng-dev libjpeg-dev libfreetype6-dev libzip-dev vim git zip unzip jq libssl-dev libicu-dev wget sudo lsb-release systemctl default-mysql-client nodejs npm supervisor"
 ARG PHP_EXTS="pdo pdo_mysql mysqli zip ftp gd pcntl sockets intl"
-ARG PHP_PECL_EXTS="pcov"
+ARG PHP_PECL_EXTS=""
 
 # Set Environment Variables
 ENV PATH="${PATH}:/var/www/html/vendor/bin" \
@@ -24,7 +24,7 @@ RUN a2enmod rewrite && \
     docker-php-ext-configure intl && \
     docker-php-ext-configure ftp --with-openssl-dir=/usr && \
     docker-php-ext-install -j$(nproc) ${PHP_EXTS} && \
-    pecl install ${PHP_PECL_EXTS} && docker-php-ext-enable ${PHP_PECL_EXTS} && \
+    if [ -n "${PHP_PECL_EXTS}" ]; then pecl install ${PHP_PECL_EXTS} && docker-php-ext-enable ${PHP_PECL_EXTS}; fi && \
     curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
     npm install -g vite pnpm && \
     # Clean up
