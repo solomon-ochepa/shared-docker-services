@@ -1,11 +1,30 @@
 services:
+  redis:
+    image: 'redis:8-alpine'
+    container_name: shared-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - '${FORWARD_REDIS_PORT:-6379}:6379'
+    volumes:
+      - 'redis:/data'
+      - './config/${APP_ENV:-local}/redis.conf:/usr/local/etc/redis/redis.conf:ro'
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      retries: 3
+      timeout: 5s
+    restart: unless-stopped
+    networks:
+      - shared
+
   phpmyadmin:
     image: phpmyadmin:latest
     container_name: phpmyadmin
     environment:
-      PMA_HOSTS: '${PMA_HOSTS:-users-mysql,***}'
-      PMA_VERBOSES: '${PMA_HOST_NAMES:-Users,***}'
-      PMA_USERS: root
+      PMA_HOSTS: '${PMA_HOSTS:-auth-mysql}'
+      PMA_VERBOSES: '${PMA_VERBOSES:-Auth}'
       UPLOAD_LIMIT: 256M
     ports:
       - '${PMA_PORT:-8080}:80'
@@ -16,3 +35,11 @@ services:
 networks:
   shared:
     external: true
+
+volumes:
+  redis:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/redis
+      o: bind
