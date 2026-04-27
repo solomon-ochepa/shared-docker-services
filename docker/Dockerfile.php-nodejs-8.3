@@ -25,13 +25,14 @@ RUN --mount=type=cache,target=/var/cache/apt \
     docker-php-ext-configure intl; \
     docker-php-ext-configure ftp --with-openssl-dir=/usr; \
     docker-php-ext-install -j$(nproc) ${PHP_EXTS}; \
-    # PECL extensions — only if requested
+    \
     if [ -n "${PHP_PECL_EXTS}" ]; then \
         pecl channel-update pecl.php.net; \
         pecl install ${PHP_PECL_EXTS}; \
         docker-php-ext-enable ${PHP_PECL_EXTS}; \
     fi; \
-    # Node.js
+    \
+    # Node (builder only)
     mkdir -p /etc/apt/keyrings; \
     curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
         | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
@@ -40,52 +41,57 @@ RUN --mount=type=cache,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends nodejs; \
     corepack enable; \
     corepack prepare pnpm@latest --activate; \
-    rm -rf /tmp/* /var/tmp/* /root/.npm
+    \
+    # cleanup builder
+    apt-get purge -y --auto-remove gnupg; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm
 
-# 2. PRODUCTION IMAGE: Minimal runtime — no Node/pnpm (build assets in a separate node stage in app Dockerfiles)
+# PRODUCTION IMAGE: Minimal runtime — no Node/pnpm (build assets in a separate node stage in app Dockerfiles)
 FROM php:8.3-apache AS production
 
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
     COMPOSER_ALLOW_SUPERUSER=1
 
-# PHP extensions from builder (compiled .so files + their ini stubs)
+# Copy only compiled PHP artifacts
 COPY --from=builder /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
 COPY --from=builder /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 
-# Runtime library dependencies only (no build tools, no Node)
+# 2. Runtime deps ONLY (strictly minimal)
 RUN --mount=type=cache,target=/var/cache/apt \
     --mount=type=cache,target=/var/lib/apt \
     set -eux; \
     apt-get update && apt-get install -y --no-install-recommends \
-        libpng16-16t64 \
+        libpng16-16 \
         libjpeg62-turbo \
         libfreetype6 \
-        libzip5 \
-        libicu76 \
-        libssl3t64 \
+        libzip4 \
+        libicu72 \
+        libssl3 \
         ca-certificates \
         curl \
-        supervisor \
         git \
         unzip \
-        && apt-get clean \
-        && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*; \
-    # Remap www-data uid/gid to 1000 for host-volume compatibility
-    usermod -u 1000 www-data && groupmod -g 1000 www-data; \
-    chown -R www-data:www-data /var/www /var/log/apache2 /var/run/apache2
+    ; \
+    rm -rf /var/lib/apt/lists/*
 
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Composer (no full image pull overhead)
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 # PHP performance defaults — override by adding zz-app.ini in /usr/local/etc/php/conf.d/
 COPY docker/php/performance.ini /usr/local/etc/php/conf.d/performance.ini
 COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
 
-# Apache: modules + vhost + performance defaults
+# Apache config
 COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
 COPY docker/apache/performance.conf /etc/apache2/conf-available/performance.conf
 RUN a2enmod rewrite headers expires deflate && \
-    echo 'export APACHE_DOCUMENT_ROOT="${APACHE_DOCUMENT_ROOT:-/var/www/html/public}"' \
-        >> /etc/apache2/envvars && \
-    a2enconf performance
+    a2enconf performance && \
+    echo 'export APACHE_DOCUMENT_ROOT="${APACHE_DOCUMENT_ROOT:-/var/www/html/public}"' >> /etc/apache2/envvars
+
+# Permissions (single pass)
+RUN set -eux; \
+    usermod -u 1000 www-data; \
+    groupmod -g 1000 www-data; \
+    chown -R www-data:www-data /var/www /var/run/apache2 /var/log/apache2
 
 WORKDIR /var/www/html
