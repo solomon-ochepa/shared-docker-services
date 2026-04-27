@@ -1,7 +1,8 @@
-# Note: Run `docker build -t php-nodejs:8.3 -f docker/Dockerfile.php-nodejs .` to build the image
+# Note: Run `docker build -t php-nodejs:8.5 -f docker/Dockerfile.php-nodejs-8.5 .` to build the image locally
+# Note: Run `docker build -t mburton3969/php-nodejs:8.5 -f docker/Dockerfile.php-nodejs-8.5 .` to build the image for production environment
 
 # Base Image
-FROM php:8.3-apache AS base
+FROM php:8.5-apache AS base
 
 # This helps keep our Dockerfiles DRY -> https://bit.ly/dry-code
 # You can see a list of required extensions for Laravel here: https://laravel.com/docs/11.x/deployment#server-requirements
