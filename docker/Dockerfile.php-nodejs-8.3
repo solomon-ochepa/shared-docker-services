@@ -88,3 +88,11 @@ RUN a2enmod rewrite headers expires deflate && \
     echo 'export APACHE_DOCUMENT_ROOT="${APACHE_DOCUMENT_ROOT:-/var/www/html/public}"' >> /etc/apache2/envvars
 
 WORKDIR /var/www/html
+
+# Shared Laravel boot library — app startup.sh files source this and call laravel_boot "$@"
+COPY --chmod=755 docker/scripts/laravel-boot.sh /usr/local/bin/laravel-boot.sh
+
+# Dev PHP overrides — downstream Dockerfiles apply this when APP_ENV != production
+COPY docker/php/dev.ini /usr/local/etc/php/conf.d/dev.ini.disabled
+
+ENTRYPOINT ["/usr/local/bin/startup.sh"]
