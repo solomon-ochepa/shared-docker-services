@@ -55,10 +55,15 @@ database_health_check() {
 run_migrations() {
     if [ "$APP_ENV" != "testing" ] && [ "$DB_HEALTHY" = "true" ]; then
         echo "Migrations"
-        php artisan migrate --force
+        MIGRATE_OUTPUT=$(php artisan migrate --force 2>&1)
+        echo "$MIGRATE_OUTPUT"
         echo -e "Migrations: Completed!\n\n"
 
-        if [ "$APP_ENV" != "production" ] || [ "$RUN_SEEDERS" = "true" ]; then
+        # Seed when new migrations were applied or explicitly requested via RUN_SEEDERS=true
+        local RAN_MIGRATIONS=false
+        echo "$MIGRATE_OUTPUT" | grep -qE "Migrating:|Running migrations" && RAN_MIGRATIONS=true
+
+        if [ "$RAN_MIGRATIONS" = "true" ] || [ "$RUN_SEEDERS" = "true" ]; then
             echo "Seeders"
 
             echo "Seeding root"
@@ -79,8 +84,9 @@ setup_permissions() {
     chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
     if [ "$APP_ENV" != "testing" ]; then
-        echo "Cache: Clearing all cached data"
-        php artisan optimize:clear
+        echo "Cache: Clearing application cache"
+        php artisan cache:clear
+        php artisan view:clear
         echo ""
     fi
 }
