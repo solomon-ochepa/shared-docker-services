@@ -1,41 +1,98 @@
 # Note: Run `docker build -t php-nodejs:8.3 -f docker/Dockerfile.php-nodejs-8.3 .` to build the image locally
 # Note: Run `docker build -t mburton3969/php-nodejs:8.3 -f docker/Dockerfile.php-nodejs-8.3 .` to build the image for production environment
 
-# Base Image
-FROM php:8.3-apache AS base
+# ── Stage 1: PHP extension compiler ───────────────────────────────────────────
+FROM php:8.3 AS php-extensions
 
-# This helps keep our Dockerfiles DRY -> https://bit.ly/dry-code
-# You can see a list of required extensions for Laravel here: https://laravel.com/docs/11.x/deployment#server-requirements
-
-# Define the build arguments with default values
-ARG PHPIZE_DEPS="libpng-dev libjpeg-dev libfreetype6-dev libzip-dev vim git zip unzip jq libssl-dev libicu-dev wget sudo lsb-release systemctl default-mysql-client nodejs npm supervisor"
-ARG PHP_EXTS="pdo pdo_mysql mysqli zip ftp gd pcntl sockets intl"
+ARG PHPIZE_DEPS="libpng-dev libjpeg-dev libfreetype6-dev libzip-dev libssl-dev libicu-dev"
+ARG PHP_EXTS="pdo pdo_mysql mysqli zip ftp gd bcmath pcntl sockets intl opcache"
 ARG PHP_PECL_EXTS=""
 
-# Set Environment Variables
-ENV PATH="${PATH}:/var/www/html/vendor/bin" \
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends ${PHPIZE_DEPS}; \
+    docker-php-ext-configure gd --with-freetype --with-jpeg; \
+    docker-php-ext-configure intl; \
+    docker-php-ext-configure ftp --with-openssl-dir=/usr; \
+    docker-php-ext-install -j$(nproc) ${PHP_EXTS}; \
+    if [ -n "${PHP_PECL_EXTS}" ]; then \
+        pecl channel-update pecl.php.net; \
+        pecl install ${PHP_PECL_EXTS}; \
+        docker-php-ext-enable ${PHP_PECL_EXTS}; \
+    fi
+
+# ── Stage 2: Builder — PHP + Node.js ──────────────────────────────────────────
+# Downstream app Dockerfiles reference this stage for composer install + asset builds
+FROM php:8.3 AS builder
+
+ARG NODE_VERSION=20
+ARG BUILDER_DEPS="ca-certificates curl gnupg"
+
+ENV PNPM_HOME=/usr/local/share/pnpm
+ENV PATH="${PATH}:${PNPM_HOME}"
+
+COPY --from=php-extensions /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=php-extensions /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends ${BUILDER_DEPS}; \
+    mkdir -p /etc/apt/keyrings; \
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg; \
+    echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_VERSION}.x nodistro main" \
+        > /etc/apt/sources.list.d/nodesource.list; \
+    apt-get update && apt-get install -y --no-install-recommends nodejs; \
+    corepack enable; \
+    corepack prepare pnpm@latest --activate; \
+    apt-get purge -y --auto-remove gnupg; \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /root/.npm
+
+# ── Stage 3: Production runtime ───────────────────────────────────────────────
+FROM php:8.3-apache AS production
+
+ARG RUNTIME_DEPS="libpng16-16 libjpeg62-turbo libfreetype6 libzip5 libicu76 libssl3t64 ca-certificates curl git supervisor unzip"
+
+ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
     COMPOSER_ALLOW_SUPERUSER=1 \
-    APACHE_DOCUMENT_ROOT=/var/www/html/public
+    PATH="${PATH}:/var/www/html/vendor/bin"
 
-# Combine operations to minimize layers
-RUN a2enmod rewrite && \
-    sed -i "s|/var/www/html|${APACHE_DOCUMENT_ROOT}|g" /etc/apache2/sites-available/000-default.conf && \
-    apt-get update && apt-get install -y --no-install-recommends ${PHPIZE_DEPS} ca-certificates && \
-    docker-php-ext-configure gd --with-freetype --with-jpeg && \
-    docker-php-ext-configure intl && \
-    docker-php-ext-configure ftp --with-openssl-dir=/usr && \
-    docker-php-ext-install -j$(nproc) ${PHP_EXTS} && \
-    if [ -n "${PHP_PECL_EXTS}" ]; then pecl install ${PHP_PECL_EXTS} && docker-php-ext-enable ${PHP_PECL_EXTS}; fi && \
-    curl -fsSL https://deb.nodesource.com/setup_current.x | bash - && \
-    npm install -g vite pnpm && \
-    # Clean up
-    npm cache clean --force && \
-    apt-get clean && rm -rf /var/lib/apt/lists/*
+# Compiled PHP extensions — sourced directly from php-extensions, not builder
+COPY --from=php-extensions /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+COPY --from=php-extensions /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
 
-# Install Composer (PHP package manager)
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+# Stable: system packages + uid remapping merged into one layer so config edits never re-run chown
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    set -eux; \
+    apt-get update && apt-get install -y --no-install-recommends ${RUNTIME_DEPS}; \
+    rm -rf /var/lib/apt/lists/*; \
+    # Remap www-data to UID/GID 1000 to match the host developer user, avoiding volume mount permission issues
+    usermod -u 1000 www-data; \
+    groupmod -g 1000 www-data; \
+    chown -R www-data:www-data /var/www /var/run/apache2 /var/log/apache2
 
-RUN echo "pcov.enabled=1" >> /usr/local/etc/php/conf.d/pcov.ini && \
-    echo "pcov.directory=/var/www/html" >> /usr/local/etc/php/conf.d/pcov.ini
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-WORKDIR /var/www/html/
+# PHP ini — override per-app with zz-app.ini in /usr/local/etc/php/conf.d/
+COPY docker/php/performance.ini /usr/local/etc/php/conf.d/performance.ini
+COPY docker/php/opcache.ini /usr/local/etc/php/conf.d/opcache.ini
+
+# Apache config — most frequently edited, last to limit cache busting
+COPY docker/apache/000-default.conf /etc/apache2/sites-available/000-default.conf
+COPY docker/apache/performance.conf /etc/apache2/conf-available/performance.conf
+RUN a2enmod rewrite headers expires deflate && \
+    a2enconf performance && \
+    echo 'export APACHE_DOCUMENT_ROOT="${APACHE_DOCUMENT_ROOT:-/var/www/html/public}"' >> /etc/apache2/envvars
+
+WORKDIR /var/www/html
+
+# Shared Laravel boot library — app startup.sh files source this and call laravel_boot "$@"
+COPY --chmod=755 docker/scripts/laravel-boot.sh /usr/local/bin/laravel-boot.sh
+
+# Dev PHP overrides — downstream Dockerfiles apply this when APP_ENV != production
+COPY docker/php/dev.ini /usr/local/etc/php/conf.d/dev.ini.disabled
+
+ENTRYPOINT ["/usr/local/bin/startup.sh"]
