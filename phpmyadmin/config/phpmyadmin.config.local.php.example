@@ -1,0 +1,38 @@
+<?php
+/**
+ * Local phpMyAdmin configuration override
+ * Copy this file to phpmyadmin.config.local.php and customize as needed
+ * This file will be ignored by git
+ */
+
+/* Add additional servers here */
+/* Example: Adding a local development MySQL server */
+/*
+$i++;
+$cfg['Servers'][$i]['host'] = 'my-local-mysql';
+$cfg['Servers'][$i]['port'] = 3306;
+$cfg['Servers'][$i]['auth_type'] = 'cookie';
+$cfg['Servers'][$i]['AllowNoPassword'] = true;
+$cfg['Servers'][$i]['verbose'] = 'My Local DB';
+// Disable phpMyAdmin configuration storage
+$cfg['Servers'][$i]['pmadb'] = '';
+$cfg['Servers'][$i]['bookmarktable'] = false;
+$cfg['Servers'][$i]['relation'] = false;
+$cfg['Servers'][$i]['table_info'] = false;
+$cfg['Servers'][$i]['table_coords'] = false;
+$cfg['Servers'][$i]['pdf_pages'] = false;
+$cfg['Servers'][$i]['column_info'] = false;
+$cfg['Servers'][$i]['history'] = false;
+$cfg['Servers'][$i]['tracking'] = false;
+$cfg['Servers'][$i]['designer_coords'] = false;
+$cfg['Servers'][$i]['userconfig'] = false;
+$cfg['Servers'][$i]['recent'] = false;
+$cfg['Servers'][$i]['favorite'] = false;
+$cfg['Servers'][$i]['users'] = false;
+$cfg['Servers'][$i]['usergroups'] = false;
+$cfg['Servers'][$i]['navigationhiding'] = false;
+$cfg['Servers'][$i]['savedsearches'] = false;
+$cfg['Servers'][$i]['central_columns'] = false;
+$cfg['Servers'][$i]['designer_settings'] = false;
+$cfg['Servers'][$i]['export_templates'] = false;
+*/

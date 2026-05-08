@@ -20,12 +20,20 @@ services:
       - shared
 
   phpmyadmin:
-    image: phpmyadmin:latest
+    build:
+      context: ./phpmyadmin/docker
+      dockerfile: Dockerfile
+    image: custom-phpmyadmin:latest
     container_name: phpmyadmin
     environment:
-      PMA_HOSTS: '${PMA_HOSTS:-auth-mysql}'
-      PMA_VERBOSES: '${PMA_VERBOSES:-Auth}'
+      PMA_ARBITRARY: 1  # Allow connection to arbitrary servers
       UPLOAD_LIMIT: 256M
+      MAX_EXECUTION_TIME: 600
+      MEMORY_LIMIT: 512M
+    volumes:
+      - './phpmyadmin/config/phpmyadmin.config.inc.php:/etc/phpmyadmin/config.user.inc.php:ro'
+      - './phpmyadmin/config:/local-config:ro'
+      - 'phpmyadmin_sessions:/tmp/phpmyadmin_sessions'
     ports:
       - '${PMA_PORT:-8080}:80'
     restart: always
@@ -43,3 +51,5 @@ volumes:
       type: none
       device: ${PWD}/data/redis
       o: bind
+  phpmyadmin_sessions:
+    driver: local
