@@ -20,6 +20,26 @@ services:
     networks:
       - shared
 
+  redis:
+    image: 'redis:8-alpine'
+    container_name: shared-redis
+    command: redis-server /usr/local/etc/redis/redis.conf
+    ports:
+      - '${FORWARD_REDIS_PORT:-6379}:6379'
+    volumes:
+      - 'redis:/data'
+      - './config/${APP_ENV:-local}/redis.conf:/usr/local/etc/redis/redis.conf:ro'
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      retries: 3
+      timeout: 5s
+    restart: unless-stopped
+    networks:
+      - shared
+
 networks:
   shared:
     external: true
@@ -27,3 +47,9 @@ networks:
 volumes:
   phpmyadmin_sessions:
     driver: local
+  redis:
+    driver: local
+    driver_opts:
+      type: none
+      device: ${PWD}/data/redis
+      o: bind
